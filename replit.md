@@ -2,9 +2,15 @@
 
 ## Overview
 
-AIMS (AI Meeting Summarizer) is a rule-based NLP application that automatically generates structured meeting minutes from transcripts. The system processes meeting transcripts (from text, PDF, or text files) and extracts key information including metadata, attendees, decisions, action items, and discussion topics. It provides export capabilities to DOCX and PDF formats for easy distribution and archiving.
+AIMS (AI Meeting Summarizer) is a rule-based NLP application that automatically generates structured meeting minutes from conversational transcripts. The system is designed to process raw meeting audio transcripts (such as those from WhisperAI, Google Meet, Zoom, or other transcription services) and extract key information including metadata, attendees, decisions, action items, and discussion topics. It provides export capabilities to DOCX and PDF formats for easy distribution and archiving.
 
 The application uses a Streamlit-based web interface for user interaction and leverages natural language processing libraries (NLTK, spaCy, scikit-learn) to perform text analysis and information extraction.
+
+**Current Status (October 29, 2025):**
+- ✅ Fully functional MVP with tested rule-based NLP processing
+- ✅ Successfully extracts attendees, decisions, and action items from conversational text
+- ✅ PDF and DOCX export working correctly
+- ✅ Tested with real WhisperAI transcripts
 
 ## User Preferences
 

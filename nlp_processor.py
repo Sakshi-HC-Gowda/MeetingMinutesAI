@@ -33,16 +33,18 @@ class MeetingNLPProcessor:
         }
         
         self.decision_patterns = [
-            r"(we|they|team|everyone|all)\s+(decided|agreed|approved|concluded|resolved|determined)",
+            r"(we|they|team|everyone|all)\s+(decided|agreed|approved|concluded|resolved|determined|will)",
             r"(it was|has been)\s+(decided|agreed|approved|concluded|resolved)",
             r"(decision|agreement|approval|resolution)\s+(was|is|has been)\s+(made|reached)",
             r"(final|final decision|consensus)\s+(is|was|reached)",
-            r"(approved|accepted|endorsed|ratified)",
-            r"(agreed to|agreed on|consent to)",
+            r"(?:let'?s|let us)\s+(?:finalize|confirm|agree on)",
+            r"(?:agreed|approved|accepted|endorsed|ratified|confirmed)",
+            r"(?:decision|agreed)[:,\s]",
         ]
         
         self.action_patterns = [
-            r"(\w+)\s+(will|should|must|needs to|has to|is to)\s+(.+?)(?:by|before|on|until)\s+([A-Z][a-z]+\s+\d+|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}|\d+\s+[A-Z][a-z]+)",
+            r"action:\s*([A-Z][a-z]+)\s*-\s*(.+?)\s*-\s*deadline:\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})",
+            r"(\w+)\s+(will|should|must|needs to|has to|is to|I'?ll)\s+(.+?)(?:by|before|on|until|deadline:)\s+([^\n.]+)",
             r"(\w+)\s+(?:is responsible for|will handle|assigned to|tasked with)\s+(.+?)(?:by|before|on)?\s*([A-Z][a-z]+\s+\d+|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}|\d+\s+[A-Z][a-z]+)?",
             r"(action item|task|to-do):\s*(.+?)(?:-|–)?\s*(?:assigned to|owner:)?\s*(\w+)(?:\s+by\s+([^.]+))?",
         ]
@@ -114,7 +116,7 @@ class MeetingNLPProcessor:
     
     def extract_attendees(self, text):
         attendees = []
-        doc = self.nlp(text)
+        seen_names = set()
         
         attendees_section = re.search(r'(?:attendees|participants|present):\s*(.+?)(?:\n\n|---)', text, re.IGNORECASE | re.DOTALL)
         if attendees_section:
@@ -129,18 +131,42 @@ class MeetingNLPProcessor:
                 if len(parts) == 2:
                     name = parts[0].strip()
                     role = parts[1].strip()
-                    attendees.append({'name': name, 'role': role})
+                    if name not in seen_names:
+                        attendees.append({'name': name, 'role': role})
+                        seen_names.add(name)
                 else:
                     name_match = re.match(r'^([A-Z][a-zA-Z\s\.]+)', line)
                     if name_match:
-                        attendees.append({'name': name_match.group(1).strip(), 'role': ''})
+                        name = name_match.group(1).strip()
+                        if name not in seen_names:
+                            attendees.append({'name': name, 'role': ''})
+                            seen_names.add(name)
+        
+        intro_patterns = [
+            r'(?:I am|I\'m|This is|My name is)\s+([A-Z][a-z]+)',
+            r'([A-Z][a-z]+),\s+(?:Project coordinator|Technical head|Finance head|Sponsorship|Publicity|Marketing|Logistics)',
+        ]
+        
+        for pattern in intro_patterns:
+            matches = re.finditer(pattern, text, re.IGNORECASE)
+            for match in matches:
+                name = match.group(1).strip()
+                if name not in seen_names and len(name) > 2:
+                    role_match = re.search(rf'{name},?\s+([^.\n]+)', text, re.IGNORECASE)
+                    role = role_match.group(1).strip() if role_match else ''
+                    attendees.append({'name': name, 'role': role})
+                    seen_names.add(name)
         
         if not attendees:
+            doc = self.nlp(text)
+            common_non_names = {'technova', 'whisper', 'ai', 'college', 'meeting', 'fest', 'event'}
+            
             for ent in doc.ents:
                 if ent.label_ == "PERSON":
                     name = ent.text.strip()
-                    if len(name) > 2 and name not in [a['name'] for a in attendees]:
+                    if len(name) > 2 and name.lower() not in common_non_names and name not in seen_names:
                         attendees.append({'name': name, 'role': ''})
+                        seen_names.add(name)
         
         return attendees[:20]
     
@@ -204,19 +230,41 @@ class MeetingNLPProcessor:
     
     def extract_action_items(self, text):
         action_items = []
+        
+        action_lines = re.finditer(r'action:\s*([A-Z][a-z]+)\s*-\s*(.+?)\s*-\s*deadline:\s*([0-9]{1,2}/[0-9]{1,2}/[0-9]{4})', text, re.IGNORECASE)
+        for match in action_lines:
+            responsible = match.group(1).strip()
+            task = match.group(2).strip()
+            deadline = match.group(3).strip()
+            
+            action_items.append({
+                'task': task,
+                'responsible': responsible.capitalize(),
+                'deadline': deadline,
+                'status': 'Pending'
+            })
+        
         sentences = sent_tokenize(text)
         
         for sentence in sentences:
-            for pattern in self.action_patterns:
+            if sentence.lower().startswith('action:'):
+                continue
+                
+            for pattern in self.action_patterns[1:]:
                 match = re.search(pattern, sentence, re.IGNORECASE)
                 if match:
                     groups = match.groups()
                     
-                    task = sentence.strip()
                     responsible = groups[0] if groups[0] else "Not specified"
+                    task = sentence.strip()
                     deadline = "Not specified"
                     
-                    for group in groups[1:]:
+                    if len(groups) >= 2 and groups[1] not in ['will', 'should', 'must', 'needs to', 'has to', 'is to', "I'll", "i'll"]:
+                        task_part = groups[2] if len(groups) > 2 else groups[1]
+                        if task_part and len(task_part) > 3:
+                            task = task_part.strip()
+                    
+                    for group in groups:
                         if group and re.search(r'\d', group):
                             deadline = group.strip()
                             break

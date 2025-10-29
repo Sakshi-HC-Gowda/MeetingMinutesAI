@@ -166,7 +166,7 @@ class MeetingExporter:
                                   spaceBefore=12,
                                   fontName='Helvetica-Bold'))
         
-        styles.add(ParagraphStyle(name='BodyText',
+        styles.add(ParagraphStyle(name='CustomBody',
                                   parent=styles['BodyText'],
                                   fontSize=11,
                                   spaceAfter=6,
@@ -180,20 +180,20 @@ class MeetingExporter:
         
         metadata = meeting_data.get('metadata', {})
         if metadata.get('title'):
-            story.append(Paragraph(f"<b>Title:</b> {metadata['title']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Title:</b> {metadata['title']}", styles['CustomBody']))
         if metadata.get('date'):
-            story.append(Paragraph(f"<b>Date:</b> {metadata['date']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Date:</b> {metadata['date']}", styles['CustomBody']))
         if metadata.get('time'):
-            story.append(Paragraph(f"<b>Time:</b> {metadata['time']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Time:</b> {metadata['time']}", styles['CustomBody']))
         if metadata.get('venue'):
-            story.append(Paragraph(f"<b>Venue:</b> {metadata['venue']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Venue:</b> {metadata['venue']}", styles['CustomBody']))
         if metadata.get('organizer'):
-            story.append(Paragraph(f"<b>Organizer:</b> {metadata['organizer']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Organizer:</b> {metadata['organizer']}", styles['CustomBody']))
         if metadata.get('recorder'):
-            story.append(Paragraph(f"<b>Recorder:</b> {metadata['recorder']}", styles['BodyText']))
+            story.append(Paragraph(f"<b>Recorder:</b> {metadata['recorder']}", styles['CustomBody']))
         
         story.append(Spacer(1, 12))
-        story.append(Paragraph("─" * 80, styles['BodyText']))
+        story.append(Paragraph("─" * 80, styles['CustomBody']))
         story.append(Spacer(1, 12))
         
         attendees = meeting_data.get('attendees', [])
@@ -203,37 +203,37 @@ class MeetingExporter:
                 name = attendee.get('name', '')
                 role = attendee.get('role', '')
                 if role:
-                    story.append(Paragraph(f"• {name} – {role}", styles['BodyText']))
+                    story.append(Paragraph(f"• {name} – {role}", styles['CustomBody']))
                 else:
-                    story.append(Paragraph(f"• {name}", styles['BodyText']))
+                    story.append(Paragraph(f"• {name}", styles['CustomBody']))
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         key_topics = meeting_data.get('key_topics', [])
         if key_topics:
             story.append(Paragraph("Key Topics", styles['SectionHeading']))
             for topic in key_topics:
-                story.append(Paragraph(f"• {topic.title()}", styles['BodyText']))
+                story.append(Paragraph(f"• {topic.title()}", styles['CustomBody']))
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         summary = meeting_data.get('summary', '')
         if summary:
             story.append(Paragraph("Discussion Summary", styles['SectionHeading']))
-            story.append(Paragraph(summary, styles['BodyText']))
+            story.append(Paragraph(summary, styles['CustomBody']))
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         decisions = meeting_data.get('decisions', [])
         if decisions:
             story.append(Paragraph("Decisions", styles['SectionHeading']))
             for decision in decisions:
-                story.append(Paragraph(f"• {decision}", styles['BodyText']))
+                story.append(Paragraph(f"• {decision}", styles['CustomBody']))
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         action_items = meeting_data.get('action_items', [])
@@ -266,27 +266,27 @@ class MeetingExporter:
             
             story.append(table)
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         next_meeting = meeting_data.get('next_meeting', {})
         if any(next_meeting.values()):
             story.append(Paragraph("Next Meeting", styles['SectionHeading']))
             if next_meeting.get('date'):
-                story.append(Paragraph(f"<b>Date:</b> {next_meeting['date']}", styles['BodyText']))
+                story.append(Paragraph(f"<b>Date:</b> {next_meeting['date']}", styles['CustomBody']))
             if next_meeting.get('time'):
-                story.append(Paragraph(f"<b>Time:</b> {next_meeting['time']}", styles['BodyText']))
+                story.append(Paragraph(f"<b>Time:</b> {next_meeting['time']}", styles['CustomBody']))
             if next_meeting.get('venue'):
-                story.append(Paragraph(f"<b>Venue:</b> {next_meeting['venue']}", styles['BodyText']))
+                story.append(Paragraph(f"<b>Venue:</b> {next_meeting['venue']}", styles['CustomBody']))
             if next_meeting.get('agenda'):
-                story.append(Paragraph(f"<b>Agenda:</b> {next_meeting['agenda']}", styles['BodyText']))
+                story.append(Paragraph(f"<b>Agenda:</b> {next_meeting['agenda']}", styles['CustomBody']))
             story.append(Spacer(1, 12))
-            story.append(Paragraph("─" * 80, styles['BodyText']))
+            story.append(Paragraph("─" * 80, styles['CustomBody']))
             story.append(Spacer(1, 12))
         
         story.append(Paragraph("Closing Note", styles['SectionHeading']))
         closing_text = f"Meeting minutes generated by AIMS - AI Meeting Summarizer on {datetime.now().strftime('%d/%m/%Y at %H:%M')}."
-        story.append(Paragraph(closing_text, styles['BodyText']))
+        story.append(Paragraph(closing_text, styles['CustomBody']))
         
         doc.build(story)
         buffer.seek(0)
