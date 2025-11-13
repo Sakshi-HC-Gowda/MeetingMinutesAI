@@ -180,7 +180,14 @@ class MeetingExporter:
         styles.add(ParagraphStyle(name='CustomBody',
                                   parent=styles['BodyText'],
                                   fontSize=11,
+                                  leading=14,
                                   spaceAfter=6,
+                                  fontName='Helvetica'))
+        styles.add(ParagraphStyle(name='TableCell',
+                                  parent=styles['BodyText'],
+                                  fontSize=9,
+                                  leading=12,
+                                  spaceAfter=4,
                                   fontName='Helvetica'))
         
         story = []
@@ -251,28 +258,35 @@ class MeetingExporter:
         if action_items:
             story.append(Paragraph("Action Items", styles['SectionHeading']))
             
-            table_data = [['Task', 'Responsible', 'Deadline', 'Status']]
+            table_data = [[
+                Paragraph('<b>Task</b>', styles['TableCell']),
+                Paragraph('<b>Responsible</b>', styles['TableCell']),
+                Paragraph('<b>Deadline</b>', styles['TableCell']),
+                Paragraph('<b>Status</b>', styles['TableCell'])
+            ]]
             for action in action_items:
                 table_data.append([
-                    action.get('task', '')[:50],
-                    action.get('responsible', 'Not specified'),
-                    action.get('deadline', 'Not specified'),
-                    action.get('status', 'Pending')
+                    Paragraph(self._sanitize(action.get('task', '')), styles['TableCell']),
+                    Paragraph(self._sanitize(action.get('responsible', 'Not specified')), styles['TableCell']),
+                    Paragraph(self._sanitize(action.get('deadline', 'Not specified')), styles['TableCell']),
+                    Paragraph(self._sanitize(action.get('status', 'Pending')), styles['TableCell'])
                 ])
             
             table = Table(table_data, colWidths=[3*inch, 1.2*inch, 1.2*inch, 0.8*inch])
             table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#2a5298')),
                 ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('ALIGN', (0, 0), (-1, 0), 'LEFT'),
+                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
                 ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, 0), 11),
                 ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
                 ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
                 ('GRID', (0, 0), (-1, -1), 1, colors.black),
-                ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
-                ('FONTSIZE', (0, 1), (-1, -1), 9),
-                ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 6),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 6),
+                ('TOPPADDING', (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
             ]))
             
             story.append(table)

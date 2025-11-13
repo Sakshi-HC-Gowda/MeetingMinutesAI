@@ -84,19 +84,63 @@ def extract_decisions_and_actions(full_text):
                 seen_decisions.add(line)
 
         if re.search(r"\b(action item|action|todo|to do|task|assign|assigned|will)\b", line, re.IGNORECASE) or re.match(r".+-\s*[A-Z][a-z]+", line):
-            parts = [p.strip() for p in re.split(r"-|–", line) if p.strip()]
-            task_key = parts[0][:50].lower()
-            if task_key not in seen_actions:
-                if len(parts) >= 2:
-                    actions.append({
-                        "task": parts[0],
-                        "responsible": parts[1] if len(parts) > 1 else "",
-                        "deadline": parts[2] if len(parts) > 2 else "",
-                        "status": parts[3] if len(parts) > 3 else "Pending"
-                    })
-                else:
-                    actions.append({"task": line, "responsible": "", "deadline": "", "status": "Pending"})
-                seen_actions.add(task_key)
+            clean_line = re.sub(r"^[\-\*\•\s]+", "", line)
+            split_pattern = r"\s[-–—]\s"
+            if re.search(split_pattern, clean_line):
+                raw_parts = re.split(split_pattern, clean_line)
+            else:
+                raw_parts = [clean_line]
+            parts = [p.strip(" -–—") for p in raw_parts if p and p.strip(" -–—")]
+            if not parts:
+                continue
+
+            # normalize generic prefixes before generating keys
+            task_candidate = re.sub(
+                r"^(action items?|action item|action|task|tasks?|todo|to-?do)\s*[:\-]\s*",
+                "",
+                parts[0],
+                flags=re.IGNORECASE,
+            ).strip()
+
+            task_key = (task_candidate or parts[0])[:80].lower()
+            if task_key in seen_actions:
+                continue
+
+            responsible = parts[1] if len(parts) > 1 else ""
+            deadline = parts[2] if len(parts) > 2 else ""
+            status = parts[3] if len(parts) > 3 else "Pending"
+
+            # If the first segment is just a label (e.g., "Action item"), shift the window forward
+            if len(parts) > 1 and re.fullmatch(r"(action items?|action|task|tasks?|todo|to-?do)\b\.?", parts[0], flags=re.IGNORECASE):
+                task_candidate = parts[1]
+                responsible = parts[2] if len(parts) > 2 else ""
+                deadline = parts[3] if len(parts) > 3 else ""
+                status = parts[4] if len(parts) > 4 else status
+
+            task = re.sub(
+                r"^(action items?|action item|action|task|tasks?|todo|to-?do)\s*[:\-]\s*",
+                "",
+                task_candidate,
+                flags=re.IGNORECASE,
+            ).strip() or task_candidate.strip()
+
+            def _strip_label(value: str, pattern: str) -> str:
+                if not value:
+                    return value
+                cleaned = re.sub(pattern, "", value, flags=re.IGNORECASE).strip()
+                return cleaned
+
+            responsible = _strip_label(responsible, r"^(responsible|owner|assignee|assigned to|lead)\s*[:\-]\s*")
+            deadline = _strip_label(deadline, r"^(deadline|due date?|target date?|by)\s*[:\-]\s*")
+            status = _strip_label(status, r"^(status)\s*[:\-]\s*") or "Pending"
+
+            actions.append({
+                "task": task or clean_line,
+                "responsible": responsible,
+                "deadline": deadline,
+                "status": status
+            })
+            seen_actions.add(task_key)
 
     return decisions[:15], actions[:15]
 
@@ -118,16 +162,20 @@ def build_structure(diarized_segments, merged_summary, full_transcript_text):
         # Combine summary with cleaned segments for better topic extraction
         text_for_topics = merged_summary + " " + cleaned_segments[:1000]  # Limit to avoid too much text
     key_topics = processor.extract_key_topics(text_for_topics)
+    keywords = processor.extract_keywords(full_transcript_text, top_n=12)
+    entity_actions = processor.extract_entity_actions(full_transcript_text)
 
     structured = {
         "metadata": metadata,
         "attendees": attendees,
         "agenda": metadata.get("title", ""),
         "key_topics": key_topics,
+        "keywords": keywords,
         "summary": merged_summary,
         "decisions": decisions,
         "action_items": actions,
-        "next_meeting": {}
+        "next_meeting": {},
+        "entity_actions": entity_actions,
     }
     return structured
 

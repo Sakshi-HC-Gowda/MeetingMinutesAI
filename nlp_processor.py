@@ -1,7 +1,7 @@
 import re
 import nltk
 from sklearn.feature_extraction.text import TfidfVectorizer
-from collections import defaultdict
+from collections import defaultdict, Counter
 import spacy
 from datetime import datetime
 
@@ -48,6 +48,7 @@ class MeetingNLPProcessor:
             r"(\w+)\s+(?:is responsible for|will handle|assigned to|tasked with)\s+(.+?)(?:by|before|on)?\s*([A-Z][a-z]+\s+\d+|[0-9]{1,2}/[0-9]{1,2}/[0-9]{4}|\d+\s+[A-Z][a-z]+)?",
             r"(action item|task|to-do):\s*(.+?)(?:-|–)?\s*(?:assigned to|owner:)?\s*(\w+)(?:\s+by\s+([^.]+))?",
         ]
+        self._stopword_cache = None
         
     def _load_spacy(self):
         try:
@@ -261,6 +262,143 @@ class MeetingNLPProcessor:
             return topics[:top_n]
         except:
             return []
+
+    def extract_keywords(self, text, top_n=12):
+        """
+        Return high-salience keywords/phrases using TF-IDF weighting plus POS filtering.
+        Keeps 1-3 gram noun phrases and proper nouns.
+        """
+        if not text or len(text.strip()) < 20:
+            return []
+
+        sentences = [s.strip() for s in sent_tokenize(text) if len(s.split()) >= 4]
+        if not sentences:
+            sentences = [text]
+
+        try:
+            if self._stopword_cache is None:
+                sw = set(stopwords.words('english'))
+                sw.update({"meeting", "discussed", "discussion", "team", "group", "project"})
+                self._stopword_cache = sw
+
+            vectorizer = TfidfVectorizer(
+                stop_words=list(self._stopword_cache),
+                ngram_range=(1, 3),
+                max_features=100,
+                min_df=1,
+                max_df=0.85,
+                token_pattern=r"(?u)\b[A-Za-z][A-Za-z]+\b"
+            )
+            tfidf_matrix = vectorizer.fit_transform(sentences)
+            feature_names = vectorizer.get_feature_names_out()
+            scores = tfidf_matrix.sum(axis=0).A1
+            ranked = sorted(zip(feature_names, scores), key=lambda x: x[1], reverse=True)
+
+            results = []
+            if self.nlp:
+                doc = self.nlp(" ".join(sentences))
+                valid_phrases = set()
+                for chunk in doc.noun_chunks:
+                    if len(chunk.text.split()) <= 3:
+                        valid_phrases.add(chunk.text.lower())
+                for ent in doc.ents:
+                    if ent.label_ in {"PRODUCT", "EVENT", "WORK_OF_ART", "ORG"} and len(ent.text.split()) <= 3:
+                        valid_phrases.add(ent.text.lower())
+            else:
+                valid_phrases = set()
+
+            seen = set()
+            for term, score in ranked:
+                clean_term = term.strip()
+                if not clean_term or clean_term.lower() in seen:
+                    continue
+
+                if valid_phrases and clean_term.lower() not in valid_phrases and len(clean_term.split()) > 1:
+                    continue
+
+                seen.add(clean_term.lower())
+                results.append(clean_term.title())
+                if len(results) >= top_n:
+                    break
+
+            if len(results) < top_n:
+                for term, _ in ranked:
+                    clean_term = term.strip()
+                    if clean_term.lower() in seen:
+                        continue
+                    seen.add(clean_term.lower())
+                    results.append(clean_term.title())
+                    if len(results) >= top_n:
+                        break
+
+            return results[:top_n]
+        except Exception:
+            return []
+
+    def extract_entity_actions(self, text, max_items=15):
+        """
+        Use spaCy NER + dependency parsing to surface 'who did what' triples.
+        Returns list of dicts with entity, label, action (verb lemma), object, and snippet.
+        """
+        if not text or not self.nlp:
+            return []
+
+        doc = self.nlp(text)
+        ent_index = {}
+        for ent in doc.ents:
+            if ent.label_ in {"PERSON", "ORG"}:
+                for idx in range(ent.start, ent.end):
+                    ent_index[idx] = ent
+
+        actor_actions = defaultdict(list)
+        for token in doc:
+            if token.dep_ in ("nsubj", "nsubjpass"):
+                ent = ent_index.get(token.i)
+                if not ent:
+                    continue
+
+                verb = token.head
+                if verb.pos_ != "VERB":
+                    continue
+
+                obj = None
+                for child in verb.children:
+                    if child.dep_ in ("dobj", "attr", "oprd", "pobj", "ccomp", "xcomp"):
+                        obj = " ".join(w.text for w in child.subtree).strip()
+                        break
+
+                actor_actions[(ent.text, ent.label_)].append({
+                    "verb": verb.lemma_,
+                    "object": obj,
+                    "sentence": verb.sent.text.strip()
+                })
+
+        results = []
+        seen = set()
+        for (entity, label), actions in actor_actions.items():
+            # Keep the most frequent actions per entity
+            counter = Counter((a["verb"], a.get("object", "")) for a in actions)
+            top_actions = counter.most_common(4)
+            for (verb, obj), _ in top_actions:
+                key = (entity.lower(), verb, (obj or "").lower())
+                if key in seen:
+                    continue
+                seen.add(key)
+                sentence = next(
+                    (a["sentence"] for a in actions if a["verb"] == verb and (a.get("object", "") or "") == obj),
+                    ""
+                )
+                results.append({
+                    "entity": entity,
+                    "label": label,
+                    "action": verb,
+                    "object": obj or "",
+                    "snippet": sentence
+                })
+                if len(results) >= max_items:
+                    return results
+
+        return results[:max_items]
     
     def generate_summary(self, text, num_sentences=3):
         sentences = sent_tokenize(text)
@@ -425,6 +563,8 @@ class MeetingNLPProcessor:
             )
         
         key_topics = self.extract_key_topics(discussion_text, top_n=5)
+        keywords = self.extract_keywords(discussion_text, top_n=10)
+        entity_actions = self.extract_entity_actions(raw_text)
         summary = self.generate_summary(discussion_text, num_sentences=3)
         decisions = self.extract_decisions(raw_text)
         action_items = self.extract_action_items(raw_text)
@@ -434,6 +574,8 @@ class MeetingNLPProcessor:
             'metadata': metadata,
             'attendees': attendees,
             'key_topics': key_topics,
+            'keywords': keywords,
+            'entity_actions': entity_actions,
             'summary': summary,
             'decisions': decisions,
             'action_items': action_items,
