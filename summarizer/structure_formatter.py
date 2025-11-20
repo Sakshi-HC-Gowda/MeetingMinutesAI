@@ -147,37 +147,42 @@ def extract_decisions_and_actions(full_text):
 def build_structure(diarized_segments, merged_summary, full_transcript_text):
     from nlp_processor import MeetingNLPProcessor
 
+    processor = MeetingNLPProcessor()
+
     metadata = extract_metadata_from_text(full_transcript_text)
     attendees = extract_attendees(diarized_segments)
     decisions, actions = extract_decisions_and_actions(full_transcript_text + "\n" + merged_summary)
 
-    processor = MeetingNLPProcessor()
-    # Use merged summary for key topics, but also include cleaned transcript text for better context
-    # Combine summary with cleaned transcript segments for richer topic extraction
-    text_for_topics = merged_summary
-    if diarized_segments and len(diarized_segments) > 0:
-        # Extract text from segments and clean it
-        segment_texts = [s.get('text', '') for s in diarized_segments if s.get('text')]
-        cleaned_segments = processor.preprocess_text(' '.join(segment_texts))
-        # Combine summary with cleaned segments for better topic extraction
-        text_for_topics = merged_summary + " " + cleaned_segments[:1000]  # Limit to avoid too much text
-    key_topics = processor.extract_key_topics(text_for_topics)
+    # extract key topics (used as agenda titles)
+    key_topics = processor.extract_key_topics(merged_summary)
+
+    # build structured agenda
+    agenda = []
+    for idx, topic in enumerate(key_topics):
+        agenda.append({
+            "no": idx + 1,
+            "title": topic,
+            "discussion": "",         # user fills in UI
+            "responsibility": ""      # user fills in UI
+        })
+
     keywords = processor.extract_keywords(full_transcript_text, top_n=12)
     entity_actions = processor.extract_entity_actions(full_transcript_text)
 
     structured = {
         "metadata": metadata,
         "attendees": attendees,
-        "agenda": metadata.get("title", ""),
-        "key_topics": key_topics,
-        "keywords": keywords,
+        "agenda": agenda,                   # UPDATED
         "summary": merged_summary,
         "decisions": decisions,
         "action_items": actions,
         "next_meeting": {},
-        "entity_actions": entity_actions,
+        "keywords": keywords,
+        "entity_actions": entity_actions
     }
+
     return structured
+
 
 def _simple_cleanup(text: str) -> str:
     # basic normalizations: collapse whitespace, fix repeated chars/words, basic casing

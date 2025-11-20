@@ -5,7 +5,6 @@ from io import BytesIO
 from datetime import datetime
 from nlp_processor import MeetingNLPProcessor
 from export_utils import MeetingExporter
-from email_utils import send_summary_email
 import tempfile
 import os
 from pathlib import Path
@@ -273,6 +272,7 @@ def summary_page():
     
     col1, col2 = st.columns([2, 1])
     
+    # -------------------- MEETING METADATA --------------------
     with col1:
         st.markdown("### 📌 Meeting Information")
         metadata = data.get('metadata', {})
@@ -295,18 +295,20 @@ def summary_page():
         data['metadata']['organizer'] = organizer
         data['metadata']['recorder'] = recorder
     
+    # -------------------- STATS --------------------
     with col2:
         st.markdown("### 📊 Processing Stats")
-        st.metric("Key Topics Extracted", len(data.get('key_topics', [])))
+        st.metric("Agenda Items", len(data.get('agenda', [])))
         st.metric("Decisions Identified", len(data.get('decisions', [])))
         st.metric("Action Items Found", len(data.get('action_items', [])))
         st.metric("Attendees Detected", len(data.get('attendees', [])))
     
     st.markdown("---")
     
+    # -------------------- TABS --------------------
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "👥 Attendees", 
-        "🔑 Key Topics", 
+        "📌 Agenda", 
         "📝 Summary", 
         "✅ Decisions", 
         "📌 Action Items", 
@@ -314,6 +316,7 @@ def summary_page():
         "🧠 Insights"
     ])
     
+    # -------------------- TAB 1: ATTENDEES --------------------
     with tab1:
         st.markdown("### 👥 Attendees")
         attendees = data.get('attendees', [])
@@ -342,201 +345,212 @@ def summary_page():
                 data['attendees'] = [{'name': '', 'role': ''}]
                 st.rerun()
     
+    # -------------------- TAB 2: AGENDA (FULL NEW UI) --------------------
     with tab2:
-        st.markdown("### 🔑 Key Topics")
-        key_topics = [ _sanitize(t) for t in data.get('key_topics', []) if t ]
-        if key_topics:
-            for i, topic in enumerate(key_topics):
-                data['key_topics'][i] = st.text_input(
-                    f"Topic {i+1}",
-                    value=topic,
-                    key=f"topic_{i}"
-                )
-            
-            if st.button("➕ Add Topic"):
-                key_topics.append("")
+        st.markdown("### 📌 Agenda (Structured)")
+
+        agenda = data.get('agenda', [])
+
+        if not isinstance(agenda, list):
+            agenda = []
+
+        if agenda:
+
+            for i, item in enumerate(agenda):
+
+                st.markdown(f"#### Agenda Item {item.get('no', i+1)}")
+
+                colA, colB = st.columns([2, 1])
+
+                with colA:
+                    new_title = st.text_input(
+                        "Title",
+                        value=item.get("title", ""),
+                        key=f"agenda_title_{i}"
+                    )
+
+                    new_discussion = st.text_area(
+                        "Discussion & Action to be taken",
+                        value=item.get("discussion", ""),
+                        key=f"agenda_discussion_{i}",
+                        height=120
+                    )
+
+                with colB:
+                    new_resp = st.text_input(
+                        "Responsibility",
+                        value=item.get("responsibility", ""),
+                        key=f"agenda_resp_{i}"
+                    )
+
+                # Update session
+                data['agenda'][i]["title"] = new_title
+                data['agenda'][i]["discussion"] = new_discussion
+                data['agenda'][i]["responsibility"] = new_resp
+
+                # Delete button
+                if st.button(f"🗑 Delete Agenda Item {i+1}", key=f"delete_agenda_{i}"):
+                    data['agenda'].pop(i)
+                    st.rerun()
+
+                st.markdown("---")
+
+            if st.button("➕ Add Agenda Item"):
+                new_no = len(data['agenda']) + 1
+                data['agenda'].append({
+                    "no": new_no,
+                    "title": "",
+                    "discussion": "",
+                    "responsibility": ""
+                })
                 st.rerun()
+
         else:
-            st.info("No key topics extracted automatically.")
-            if st.button("➕ Add Topic"):
-                data['key_topics'] = [""]
+            st.info("No agenda items detected.")
+            if st.button("➕ Add Agenda Item"):
+                data['agenda'] = [{
+                    "no": 1,
+                    "title": "",
+                    "discussion": "",
+                    "responsibility": ""
+                }]
                 st.rerun()
-    
+
+            # -------------------- TAB 3: SUMMARY --------------------
     with tab3:
         st.markdown("### 📝 Discussion Summary")
-        summary = _sanitize(data.get('summary', ''))
-        bullets = _as_bullets(summary)
-        if bullets:
-            st.markdown("#### Key Points")
-            st.markdown("\n".join([f"- {b}" for b in bullets]))
+
+        raw_summary = _sanitize(data.get("summary", ""))
+
+        # Build a simple "formal" style paragraph from the raw summary
+        if raw_summary:
+            # Split into sentences and tidy
+            import re
+            sentences = [s.strip().capitalize() for s in re.split(r'(?<=[.!?])\s+', raw_summary) if s.strip()]
+            joined = " ".join(sentences)
+
+            formal_summary = f"The meeting was convened to discuss the following points: {joined}"
+
+            st.markdown("#### 📘 Formal Summary (Auto-Generated Preview)")
+            st.markdown(
+                f"<p style='text-align: justify;'>{formal_summary}</p>",
+                unsafe_allow_html=True
+            )
             st.markdown("---")
-        data['summary'] = st.text_area(
-            "Summary (editable)",
-            value=summary,
+        else:
+            formal_summary = ""
+
+        # Editable underlying summary (this is what gets stored)
+        st.markdown("#### ✏️ Edit Source Summary (Will Influence Final Output)")
+        updated_raw = st.text_area(
+            "Edit Summary",
+            value=raw_summary,
             height=200,
             key="summary_edit",
-            help="Edit the auto-generated summary"
+            help="Edit this to refine the summary used in exports."
         )
-    
+
+        # Save back the edited summary
+        data["summary"] = updated_raw
+
+    # -------------------- TAB 4: DECISIONS --------------------
     with tab4:
         st.markdown("### ✅ Decisions")
-        decisions = [ _sanitize(d) for d in data.get('decisions', []) ]
+        decisions = data.get('decisions', [])
         if decisions:
-            for i, decision in enumerate(decisions):
-                data['decisions'][i] = st.text_area(
+            for i, dec in enumerate(decisions):
+                data['decisions'][i] = st.text_input(
                     f"Decision {i+1}",
-                    value=decision,
-                    height=80,
+                    value=dec,
                     key=f"decision_{i}"
                 )
-            
             if st.button("➕ Add Decision"):
                 decisions.append("")
                 st.rerun()
         else:
-            st.info("No decisions detected. Click below to add manually.")
+            st.info("No decisions detected.")
             if st.button("➕ Add Decision"):
                 data['decisions'] = [""]
                 st.rerun()
-    
+
+    # -------------------- TAB 5: ACTION ITEMS --------------------
     with tab5:
         st.markdown("### 📌 Action Items")
-        action_items = [
-            {
-                'task': _sanitize(a.get('task','')),
-                'responsible': _sanitize(a.get('responsible','')),
-                'deadline': _sanitize(a.get('deadline','')),
-                'status': _sanitize(a.get('status','Pending')),
-            }
-            for a in data.get('action_items', [])
-        ]
+        action_items = data.get('action_items', [])
         if action_items:
             for i, action in enumerate(action_items):
                 st.markdown(f"**Action Item {i+1}**")
                 col1, col2, col3, col4 = st.columns([4, 2, 2, 1])
                 
                 with col1:
-                    action_items[i]['task'] = st.text_area(
-                        "Task",
-                        value=action.get('task', ''),
-                        key=f"task_{i}",
-                        height=60,
-                        help="Enter the action item task description"
-                    )
+                    action_items[i]['task'] = st.text_area("Task", value=action.get('task',''), key=f"task_{i}", height=60)
                 with col2:
-                    action_items[i]['responsible'] = st.text_input(
-                        "Responsible",
-                        value=action.get('responsible', ''),
-                        key=f"responsible_{i}"
-                    )
+                    action_items[i]['responsible'] = st.text_input("Responsible", value=action.get('responsible',''), key=f"responsible_{i}")
                 with col3:
-                    action_items[i]['deadline'] = st.text_input(
-                        "Deadline",
-                        value=action.get('deadline', ''),
-                        key=f"deadline_{i}"
-                    )
+                    action_items[i]['deadline'] = st.text_input("Deadline", value=action.get('deadline',''), key=f"deadline_{i}")
                 with col4:
                     action_items[i]['status'] = st.selectbox(
                         "Status",
-                        options=["Pending", "In progress", "Completed", "Upcoming"],
-                        index=["Pending", "In progress", "Completed", "Upcoming"].index(
-                            action.get('status', 'Pending')
-                        ),
+                        ["Pending","In progress","Completed","Upcoming"],
+                        index=["Pending","In progress","Completed","Upcoming"].index(action.get('status','Pending')),
                         key=f"status_{i}"
                     )
                 st.markdown("---")
             
             if st.button("➕ Add Action Item"):
-                action_items.append({
-                    'task': '',
-                    'responsible': '',
-                    'deadline': '',
-                    'status': 'Pending'
-                })
+                action_items.append({'task':'','responsible':'','deadline':'','status':'Pending'})
                 st.rerun()
+
         else:
-            st.info("No action items detected. Click below to add manually.")
+            st.info("No action items found.")
             if st.button("➕ Add Action Item"):
-                data['action_items'] = [{
-                    'task': '',
-                    'responsible': '',
-                    'deadline': '',
-                    'status': 'Pending'
-                }]
+                data['action_items'] = [{'task':'','responsible':'','deadline':'','status':'Pending'}]
                 st.rerun()
-    
+
+    # -------------------- TAB 6: NEXT MEETING --------------------
     with tab6:
         st.markdown("### 📅 Next Meeting")
         next_meeting = data.get('next_meeting', {})
         
         col1, col2 = st.columns(2)
         with col1:
-            next_meeting['date'] = st.text_input(
-                "Date",
-                value=next_meeting.get('date') or "",
-                key="next_date"
-            )
-            next_meeting['time'] = st.text_input(
-                "Time",
-                value=next_meeting.get('time') or "",
-                key="next_time"
-            )
+            next_meeting['date'] = st.text_input("Date", value=next_meeting.get('date') or "", key="next_date")
+            next_meeting['time'] = st.text_input("Time", value=next_meeting.get('time') or "", key="next_time")
         with col2:
-            next_meeting['venue'] = st.text_input(
-                "Venue",
-                value=next_meeting.get('venue') or "",
-                key="next_venue"
-            )
-            next_meeting['agenda'] = st.text_area(
-                "Agenda",
-                value=next_meeting.get('agenda') or "",
-                key="next_agenda",
-                height=100
-            )
-    
+            next_meeting['venue'] = st.text_input("Venue", value=next_meeting.get('venue') or "", key="next_venue")
+            next_meeting['agenda'] = st.text_area("Agenda", value=next_meeting.get('agenda') or "", key="next_agenda", height=100)
+
+    # -------------------- TAB 7: INSIGHTS --------------------
     with tab7:
         st.markdown("### 🧠 NLP Insights")
-        keywords = [_sanitize(k) for k in (data.get('keywords') or []) if k]
-        entity_actions = [
-            {
-                "entity": _sanitize(item.get("entity", "")),
-                "label": _sanitize(item.get("label", "")),
-                "action": _sanitize(item.get("action", "")),
-                "object": _sanitize(item.get("object", "")),
-                "snippet": _sanitize(item.get("snippet", "")),
-            }
-            for item in (data.get('entity_actions') or [])
-        ]
+        keywords = data.get('keywords', [])
+        entity_actions = data.get('entity_actions', [])
 
         if keywords:
             st.markdown("#### Top Keywords")
-            st.markdown(
-                " ".join([f"`{kw}`" for kw in keywords])
-            )
+            st.markdown(" ".join([f"`{kw}`" for kw in keywords]))
         else:
-            st.info("No standout keywords detected yet.")
+            st.info("No standout keywords found.")
 
         st.markdown("---")
 
         if entity_actions:
             st.markdown("#### Entity Actions")
             for idx, item in enumerate(entity_actions, start=1):
-                entity = item.get("entity") or "Unknown entity"
+                entity = item.get("entity") or "Unknown"
                 label = item.get("label")
                 action = item.get("action") or "mentioned"
                 obj = item.get("object")
                 snippet = item.get("snippet")
 
                 label_suffix = f" ({label})" if label else ""
-                action_text = f"{action}"
-                if obj:
-                    action_text = f"{action} — {obj}"
+                action_text = f"{action} — {obj}" if obj else action
 
                 st.markdown(f"**{idx}. {entity}{label_suffix}**: {action_text}")
                 if snippet:
                     st.caption(snippet)
         else:
-            st.info("No clear entity-action pairs found. Try providing more detailed transcripts.")
+            st.info("No entity-action pairs found.")
 
 def analytics_dashboard_page():
     st.title("📊 Analytics Dashboard")
@@ -613,18 +627,31 @@ def export_page():
     
     st.markdown("## Export Options")
     
+    # Initialise buffers in session state if not present
+    if "pdf_buffer" not in st.session_state:
+        st.session_state.pdf_buffer = None
+    if "docx_buffer" not in st.session_state:
+        st.session_state.docx_buffer = None
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("### 📄 PDF Export")
-        if st.button("📄 Export as PDF", type="primary", use_container_width=True):
-            exporter = MeetingExporter()
-            pdf_buffer = exporter.export_to_pdf(data)
-            
+        if st.button("📄 Generate PDF", type="primary", use_container_width=True):
+            try:
+                exporter = MeetingExporter()
+                with st.spinner("Generating PDF..."):
+                    st.session_state.pdf_buffer = exporter.export_to_pdf(data)
+                st.success("✅ PDF generated. Use the download button below.")
+            except Exception as e:
+                st.error(f"PDF export failed: {e}")
+                st.session_state.pdf_buffer = None
+        
+        if st.session_state.pdf_buffer:
             filename = f"Meeting_Minutes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
             st.download_button(
                 label="⬇️ Download PDF",
-                data=pdf_buffer,
+                data=st.session_state.pdf_buffer,
                 file_name=filename,
                 mime="application/pdf",
                 use_container_width=True
@@ -632,14 +659,21 @@ def export_page():
     
     with col2:
         st.markdown("### 📝 DOCX Export")
-        if st.button("📝 Export as DOCX", type="primary", use_container_width=True):
-            exporter = MeetingExporter()
-            docx_buffer = exporter.export_to_docx(data)
+        if st.button("📝 Generate DOCX", type="primary", use_container_width=True):
+            try:
+                exporter = MeetingExporter()
+                with st.spinner("Generating DOCX..."):
+                    st.session_state.docx_buffer = exporter.export_to_docx(data)
+                st.success("✅ DOCX generated. Use the download button below.")
+            except Exception as e:
+                st.error(f"DOCX export failed: {e}")
+                st.session_state.docx_buffer = None
             
+        if st.session_state.docx_buffer:
             filename = f"Meeting_Minutes_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
             st.download_button(
                 label="⬇️ Download DOCX",
-                data=docx_buffer,
+                data=st.session_state.docx_buffer,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
