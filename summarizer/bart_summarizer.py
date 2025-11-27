@@ -213,6 +213,77 @@ def summarize_chunks_bart(chunks: List[Dict], model_name: str = "sshleifer/disti
 def merge_summaries_text(summaries: List[Dict]) -> str:
     return "\n\n".join([s.get("summary", "") for s in summaries if s.get("summary")])
 
+def build_topic_bullets_from_chunks(
+    summaries: List[Dict], max_bullets: int = 15, min_words: int = 6
+) -> str:
+    """
+    Convert per-chunk summaries into structured bullet points.
+    Each bullet captures 1-2 sentences (roughly 2-3 lines) to reflect distinct topics.
+    """
+    bullets = []
+    seen = set()
+    for chunk in summaries:
+        text = (chunk.get("summary", "") or "").strip()
+        if not text:
+            continue
+        sentences = [
+            s.strip()
+            for s in re.split(r"(?<=[.!?])\s+", text)
+            if len(s.strip().split()) >= min_words
+        ]
+        if not sentences:
+            continue
+        bullet_text = " ".join(sentences[:2]).strip()
+        bullet_text = re.sub(r"\s+", " ", bullet_text)
+        if len(bullet_text.split()) < min_words:
+            continue
+        bullet_text = bullet_text[:420].rstrip(" ,;")
+        normalized = bullet_text.lower()
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        bullets.append(f"• {bullet_text}")
+        if len(bullets) >= max_bullets:
+            break
+    return "\n".join(bullets)
+
+def merge_bullet_summaries(primary: str, secondary: str, max_bullets: int = 15) -> str:
+    """
+    Merge two bullet summaries, deduplicating entries and limiting total bullets.
+    """
+    if not primary and not secondary:
+        return ""
+
+    bullet_lines = []
+    seen = set()
+
+    def _ingest(block: str):
+        if not block:
+            return False
+        for raw in re.split(r"\n+", block):
+            line = raw.strip()
+            if not line:
+                continue
+            if line.startswith(("-", "•")):
+                clean = line.lstrip("•- ").strip()
+            else:
+                clean = line
+            if not clean:
+                continue
+            normalized = clean.lower()
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+            bullet_lines.append(f"• {clean}")
+            if len(bullet_lines) >= max_bullets:
+                return True
+        return False
+
+    if _ingest(primary):
+        return "\n".join(bullet_lines)
+    _ingest(secondary)
+    return "\n".join(bullet_lines)
+
 def summarize_global(text, model_name="sshleifer/distilbart-cnn-12-6", device=-1):
     if not text or len(text) < 40:
         return text or ""

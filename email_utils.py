@@ -3,6 +3,12 @@ import smtplib
 from email.message import EmailMessage
 from typing import List, Optional
 
+try:
+    import streamlit as st
+    HAVE_STREAMLIT = True
+except ImportError:
+    HAVE_STREAMLIT = False
+
 
 class EmailConfigError(Exception):
     """Raised when SMTP configuration is missing or invalid."""
@@ -15,10 +21,29 @@ def _get_env(name: str, fallback: Optional[str] = None) -> Optional[str]:
     return fallback
 
 
+def _get_secret(key: str, fallback: Optional[str] = None) -> Optional[str]:
+    """Try to get value from Streamlit secrets, fallback to None."""
+    if not HAVE_STREAMLIT:
+        return fallback
+    try:
+        return st.secrets.get(key, fallback)
+    except Exception:
+        return fallback
+
+
 def load_smtp_settings() -> dict:
     """
-    Load SMTP configuration from environment variables.
-    Expected vars:
+    Load SMTP configuration from Streamlit secrets (preferred) or environment variables.
+    
+    Streamlit secrets (in .streamlit/secrets.toml):
+      - email (or smtp_user)
+      - password (or smtp_pass)
+      - smtp_host
+      - smtp_port (default 587)
+      - smtp_sender (defaults to email)
+      - smtp_use_tls (default true)
+    
+    Environment variables (fallback):
       - SMTP_HOST (required)
       - SMTP_PORT (default 587)
       - SMTP_USER (required for authenticated servers)
@@ -26,17 +51,22 @@ def load_smtp_settings() -> dict:
       - SMTP_SENDER or EMAIL_FROM (fallback)
       - SMTP_USE_TLS (default True)
     """
-    host = _get_env("SMTP_HOST")
-    port = int(_get_env("SMTP_PORT", "587"))
-    user = _get_env("SMTP_USER")
-    password = _get_env("SMTP_PASS")
-    sender = _get_env("SMTP_SENDER") or _get_env("EMAIL_FROM") or user
-    use_tls = (_get_env("SMTP_USE_TLS", "true").lower() != "false")
+    # Try Streamlit secrets first, then env vars
+    host = _get_secret("smtp_host") or _get_env("SMTP_HOST")
+    port_str = _get_secret("smtp_port") or _get_env("SMTP_PORT", "587")
+    port = int(port_str) if port_str else 587
+    
+    user = _get_secret("email") or _get_secret("smtp_user") or _get_env("SMTP_USER")
+    password = _get_secret("password") or _get_secret("smtp_pass") or _get_env("SMTP_PASS")
+    sender = _get_secret("smtp_sender") or _get_env("SMTP_SENDER") or _get_env("EMAIL_FROM") or user
+    
+    use_tls_str = _get_secret("smtp_use_tls") or _get_env("SMTP_USE_TLS", "true")
+    use_tls = (use_tls_str.lower() != "false") if use_tls_str else True
 
     if not host or not sender:
-        raise EmailConfigError("SMTP_HOST and SMTP_SENDER (or EMAIL_FROM) must be set.")
+        raise EmailConfigError("SMTP_HOST and SMTP_SENDER (or email) must be set in secrets.toml or environment variables.")
     if user and not password:
-        raise EmailConfigError("SMTP_PASS must be set when SMTP_USER is provided.")
+        raise EmailConfigError("Password must be set when email/user is provided.")
 
     return {
         "host": host,

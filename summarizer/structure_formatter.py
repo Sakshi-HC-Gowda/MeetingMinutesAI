@@ -1,6 +1,6 @@
 import re
 from datetime import datetime
-from typing import Dict
+from typing import Dict, List
 from pathlib import Path
 
 # try to import optional HF punctuation and summarization tools
@@ -151,20 +151,9 @@ def build_structure(diarized_segments, merged_summary, full_transcript_text):
 
     metadata = extract_metadata_from_text(full_transcript_text)
     attendees = extract_attendees(diarized_segments)
-    decisions, actions = extract_decisions_and_actions(full_transcript_text + "\n" + merged_summary)
 
-    # extract key topics (used as agenda titles)
-    key_topics = processor.extract_key_topics(merged_summary)
-
-    # build structured agenda
+    # Agenda, decisions, action items, next meeting are user-managed.
     agenda = []
-    for idx, topic in enumerate(key_topics):
-        agenda.append({
-            "no": idx + 1,
-            "title": topic,
-            "discussion": "",         # user fills in UI
-            "responsibility": ""      # user fills in UI
-        })
 
     keywords = processor.extract_keywords(full_transcript_text, top_n=12)
     entity_actions = processor.extract_entity_actions(full_transcript_text)
@@ -172,10 +161,10 @@ def build_structure(diarized_segments, merged_summary, full_transcript_text):
     structured = {
         "metadata": metadata,
         "attendees": attendees,
-        "agenda": agenda,                   # UPDATED
+        "agenda": agenda,
         "summary": merged_summary,
-        "decisions": decisions,
-        "action_items": actions,
+        "decisions": [],
+        "action_items": [],
         "next_meeting": {},
     }
 

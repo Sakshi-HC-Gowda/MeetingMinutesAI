@@ -175,20 +175,31 @@ class MeetingExporter:
                     doc.add_paragraph(f"• {title}", style="List Bullet")
             doc.add_paragraph("----")
 
-        # Summary
+        # Summary (bullet points only)
         summary = meeting_data.get("summary", "")
         if summary:
             doc.add_heading("Discussion Summary", level=2)
-            doc.add_paragraph(self._formal_summary_from_text(summary))
+            # Convert summary to bullet points
+            sentences = re.split(r"(?<=[.!?])\s+", self._sanitize(summary))
+            for sent in sentences:
+                sent = sent.strip()
+                if sent and len(sent) > 3:
+                    # Remove existing bullet markers
+                    sent = re.sub(r"^[\-\•\*\d+\.]\s*", "", sent)
+                    doc.add_paragraph(f"• {sent}")
             doc.add_paragraph("----")
 
-        # Decisions
+        # Decisions (only if provided)
         decisions = meeting_data.get("decisions", [])
+        doc.add_heading("Decisions", level=2)
         if decisions:
-            doc.add_heading("Decisions", level=2)
             for d in decisions:
-                doc.add_paragraph(self._sanitize(d), style="List Bullet")
-            doc.add_paragraph("----")
+                dec_text = self._sanitize(str(d))
+                if dec_text:
+                    doc.add_paragraph(f"• {dec_text}")
+        else:
+            doc.add_paragraph("• (No decisions provided)")
+        doc.add_paragraph("----")
 
         # Action Items
         actions = meeting_data.get("action_items", [])
@@ -215,10 +226,10 @@ class MeetingExporter:
                     p.add_run(str(next_m[key]))
             doc.add_paragraph("─" * 60)
 
-        # Closing
+        # Closing Note (bullet point)
         doc.add_heading("Closing Note", level=2)
         doc.add_paragraph(
-            f"Meeting minutes generated on {datetime.now().strftime('%d/%m/%Y at %H:%M')}."
+            f"• Meeting minutes generated on {datetime.now().strftime('%d/%m/%Y at %H:%M')}."
         )
 
         buf = BytesIO()
@@ -294,24 +305,35 @@ class MeetingExporter:
             story.append(Paragraph("----", styles["Body"]))
             story.append(Spacer(1, 12))
 
-        # Summary
+        # Summary (bullet points only)
         summary = meeting_data.get("summary", "")
         if summary:
             story.append(Paragraph("Discussion Summary", styles["Heading"]))
-            story.append(Paragraph(self._formal_summary_from_text(summary), styles["Body"]))
+            # Convert summary to bullet points
+            sentences = re.split(r"(?<=[.!?])\s+", self._sanitize(summary))
+            for sent in sentences:
+                sent = sent.strip()
+                if sent and len(sent) > 3:
+                    # Remove existing bullet markers
+                    sent = re.sub(r"^[\-\•\*\d+\.]\s*", "", sent)
+                    story.append(Paragraph(f"• {sent}", styles["Body"]))
             story.append(Spacer(1, 12))
             story.append(Paragraph("----", styles["Body"]))
             story.append(Spacer(1, 12))
 
-        # Decisions
+        # Decisions (only if provided)
         decisions = meeting_data.get("decisions", [])
+        story.append(Paragraph("Decisions", styles["Heading"]))
         if decisions:
-            story.append(Paragraph("Decisions", styles["Heading"]))
             for d in decisions:
-                story.append(Paragraph(f"• {self._sanitize(d)}", styles["Body"]))
-            story.append(Spacer(1, 12))
-            story.append(Paragraph("----", styles["Body"]))
-            story.append(Spacer(1, 12))
+                dec_text = self._sanitize(str(d))
+                if dec_text:
+                    story.append(Paragraph(f"• {dec_text}", styles["Body"]))
+        else:
+            story.append(Paragraph("• (No decisions provided)", styles["Body"]))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("----", styles["Body"]))
+        story.append(Spacer(1, 12))
 
         # Action items
         items = meeting_data.get("action_items", [])
@@ -347,11 +369,11 @@ class MeetingExporter:
             story.append(Paragraph("─" * 80, styles["Body"]))
             story.append(Spacer(1, 12))
 
-        # Closing
+        # Closing Note (bullet point)
         story.append(Paragraph("Closing Note", styles["Heading"]))
         story.append(
             Paragraph(
-                f"Meeting minutes generated on {datetime.now().strftime('%d/%m/%Y at %H:%M')}.",
+                f"• Meeting minutes generated on {datetime.now().strftime('%d/%m/%Y at %H:%M')}.",
                 styles["Body"],
             )
         )

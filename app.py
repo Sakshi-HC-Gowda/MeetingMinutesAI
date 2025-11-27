@@ -1,20 +1,29 @@
-import streamlit as st
-import PyPDF2
-import pdfplumber
-from io import BytesIO
-from datetime import datetime
-from nlp_processor import MeetingNLPProcessor
-from export_utils import MeetingExporter
-import tempfile
 import os
 import re
+import tempfile
+from datetime import datetime
+from io import BytesIO
 from pathlib import Path
-from email_utils import send_summary_email, EmailConfigError
+from typing import Dict
+
+import PyPDF2
+import pdfplumber
+import streamlit as st
+
+from email_utils import EmailConfigError, send_summary_email
+from export_utils import MeetingExporter
+from nlp_processor import MeetingNLPProcessor
 from audio_processing.transcribe import transcribe_audio
 from audio_processing.diarize import diarize_audio
 from audio_processing.transcript_parser import parse_transcript_with_timestamps, has_timestamp_format
 from summarizer.summarize import chunk_transcript
-from summarizer.bart_summarizer import summarize_chunks_bart, merge_summaries_text, summarize_global
+from summarizer.bart_summarizer import (
+    summarize_chunks_bart,
+    merge_summaries_text,
+    summarize_global,
+    build_topic_bullets_from_chunks,
+    merge_bullet_summaries,
+)
 from summarizer.structure_formatter import build_structure
 
 st.set_page_config(
@@ -268,51 +277,80 @@ def _sanitize_for_export(structured):
 
 def _build_email_body(structured: dict) -> str:
     """
-    Compose a plain-text email body with key sections for quick sharing.
+    Compose a plain-text email body with ONLY bullet points in strict order:
+    Agenda, Discussion Summary, Action Items, Decisions (if provided), Closing Note
     """
     if not structured:
         return ""
 
-    metadata = structured.get("metadata", {})
+    import re
+    
+    agenda = structured.get("agenda", []) or []
     summary = _sanitize(structured.get("summary", ""))
-    decisions = structured.get("decisions", []) or []
     action_items = structured.get("action_items", []) or []
-
+    decisions = structured.get("decisions", []) or []
+    metadata = structured.get("metadata", {})
+    
     lines = []
-    title = metadata.get("title") or "Meeting Summary"
-    date = metadata.get("date") or datetime.now().strftime("%d/%m/%Y")
-    venue = metadata.get("venue", "")
-
-    lines.append(f"Title: {title}")
-    lines.append(f"Date: {date}")
-    if venue:
-        lines.append(f"Venue: {venue}")
-
+    
+    # 1. Agenda (bullet points only)
+    if agenda:
+        lines.append("Agenda")
+        for item in agenda:
+            title = item.get("title", "") if isinstance(item, dict) else str(item)
+            title = title.strip()
+            if title:
+                lines.append(f"• {title}")
+        lines.append("")
+    
+    # 2. Discussion Summary (convert to bullet points)
     if summary:
-        lines.append("\nDiscussion Summary:")
-        lines.append(summary)
-
-    if decisions:
-        lines.append("\nDecisions:")
-        for dec in decisions:
-            lines.append(f"- {dec}")
-
+        lines.append("Discussion Summary")
+        # Split summary into sentences and convert to bullets
+        sentences = re.split(r"(?<=[.!?])\s+", summary)
+        for sent in sentences:
+            sent = sent.strip()
+            if sent and len(sent) > 3:
+                # Remove existing bullet markers
+                sent = re.sub(r"^[\-\•\*\d+\.]\s*", "", sent)
+                lines.append(f"• {sent}")
+        lines.append("")
+    
+    # 3. Action Items (bullet points only)
     if action_items:
-        lines.append("\nAction Items:")
-        for idx, item in enumerate(action_items, start=1):
+        lines.append("Action Items")
+        for item in action_items:
             task = item.get("task", "").strip()
             if not task:
                 continue
             responsible = item.get("responsible", "").strip()
             deadline = item.get("deadline", "").strip()
-            line = f"{idx}. {task}"
+            bullet = f"• {task}"
             if responsible:
-                line += f" — Owner: {responsible}"
+                bullet += f" — {responsible}"
             if deadline:
-                line += f" (Due: {deadline})"
-            lines.append(line)
-
-    lines.append("\nGenerated via AIMS - AI Meeting Summarizer")
+                bullet += f" (Due: {deadline})"
+            lines.append(bullet)
+        lines.append("")
+    
+    # 4. Decisions (only if provided, bullet points only)
+    if decisions:
+        lines.append("Decisions")
+        for dec in decisions:
+            dec_text = str(dec).strip()
+            if dec_text:
+                lines.append(f"• {dec_text}")
+        lines.append("")
+    else:
+        lines.append("Decisions")
+        lines.append("• (No decisions provided)")
+        lines.append("")
+    
+    # 5. Closing Note
+    lines.append("Closing Note")
+    date_str = datetime.now().strftime("%d/%m/%Y at %H:%M")
+    lines.append(f"• Meeting minutes generated on {date_str}.")
+    
     return "\n".join(lines).strip()
 
 def extract_text_from_pdf(pdf_file):
@@ -342,12 +380,22 @@ def main():
     st.sidebar.title("📝 AIMS")
     st.sidebar.markdown("---")
     
-    page = st.sidebar.radio(
-        "Navigation",
-        ["Home", "Upload & Transcribe", "Summary","Export"],
-        index=["Home", "Upload & Transcribe", "Summary","Export"].index(st.session_state.current_page) if st.session_state.current_page in ["Home", "Upload & Transcribe", "Summary","Export"] else 0
-    )
+    nav_items = [
+        ("🏠 Home", "Home"),
+        ("⬆️ Upload & Transcribe", "Upload & Transcribe"),
+        ("📋 Summary", "Summary"),
+        ("📤 Export", "Export"),
+    ]
+    nav_labels = [label for label, _ in nav_items]
+    current_page = st.session_state.current_page
+    default_index = next((i for i, (_, value) in enumerate(nav_items) if value == current_page), 0)
     
+    selected_label = st.sidebar.radio(
+        "Navigation",
+        nav_labels,
+        index=default_index
+    )
+    page = next(value for label, value in nav_items if label == selected_label)
     st.session_state.current_page = page
     
     # Route to appropriate page
@@ -503,12 +551,16 @@ def upload_transcribe_page():
                     device=-1
                 )
                 merged = merge_summaries_text(summaries)
-                # produce a global, more coherent summary
-                final_summary = summarize_global(
+                topic_summary = build_topic_bullets_from_chunks(summaries)
+                global_summary = summarize_global(
                     merged,
                     model_name="sshleifer/distilbart-cnn-12-6",
                     device=-1
                 )
+                if topic_summary:
+                    final_summary = merge_bullet_summaries(topic_summary, global_summary)
+                else:
+                    final_summary = merge_bullet_summaries(global_summary, "")
                 final_summary = _sanitize(final_summary)
                 # sanitize full text for metadata parsing/display
                 structured = build_structure(segments_for_summarizer, final_summary, full_text)
@@ -540,7 +592,7 @@ def summary_page():
     st.title("📋 Summary")
     st.markdown("---")
     
-    if not st.session_state.processed_data:
+    if 'processed_data' not in st.session_state or not st.session_state.processed_data:
         st.info("👈 No processed data found. Please go to 'Upload & Transcribe' to process a transcript first.")
         return
     
@@ -674,19 +726,16 @@ def summary_page():
         # NEW STRUCTURED SUMMARY VIEW
         # ----------------------
         if raw_summary:
-            # Split into paragraph + bullets if model already generated them
             lines = [l.strip() for l in raw_summary.split("\n") if l.strip()]
-            
-            paragraph_part = lines[0]
-            bullet_points = [l for l in lines[1:] if l.startswith("-") or l.startswith("•")]
+            bullet_points = [l for l in lines if l.startswith("-") or l.startswith("•")]
+            paragraph_lines = [l for l in lines if l not in bullet_points]
 
-            # Paragraph
-            st.markdown(
-                f"<p style='text-align: justify; font-size: 16px;'>{paragraph_part}</p>",
-                unsafe_allow_html=True
-            )
+            if paragraph_lines:
+                st.markdown(
+                    f"<p style='text-align: justify; font-size: 16px;'>{paragraph_lines[0]}</p>",
+                    unsafe_allow_html=True
+                )
 
-            # Bullet Points
             if bullet_points:
                 st.markdown("#### Key Discussion Points")
                 for bp in bullet_points:
