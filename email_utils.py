@@ -78,10 +78,9 @@ def load_smtp_settings() -> dict:
     }
 
 
-def send_summary_email(subject: str, body: str, recipients: List[str]) -> None:
+def send_summary_email(subject: str, body: str, recipients: List[str], pdf_buffer=None, docx_buffer=None) -> None:
     """
-    Send the meeting summary via SMTP.
-    Raises EmailConfigError for misconfiguration and smtplib.SMTPException for runtime errors.
+    Send meeting summary email with optional PDF and DOCX attachments.
     """
     if not recipients:
         raise ValueError("At least one recipient email is required.")
@@ -93,10 +92,29 @@ def send_summary_email(subject: str, body: str, recipients: List[str]) -> None:
     msg["To"] = ", ".join(recipients)
     msg.set_content(body or "")
 
+    # 🔥 Attach PDF
+    if pdf_buffer:
+        msg.add_attachment(
+            pdf_buffer.getvalue(),
+            maintype="application",
+            subtype="pdf",
+            filename="Meeting_Minutes.pdf"
+        )
+
+    # 🔥 Attach DOCX
+    if docx_buffer:
+        msg.add_attachment(
+            docx_buffer.getvalue(),
+            maintype="application",
+            subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename="Meeting_Minutes.docx"
+        )
+
     with smtplib.SMTP(settings["host"], settings["port"]) as server:
         if settings["use_tls"]:
             server.starttls()
         if settings["user"]:
             server.login(settings["user"], settings["password"])
         server.send_message(msg)
+
 

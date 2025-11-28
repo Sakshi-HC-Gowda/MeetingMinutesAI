@@ -930,6 +930,44 @@ def export_page():
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 use_container_width=True
             )
+     # ------------------- EMAIL SENDING SECTION -------------------
+    st.markdown("---")
+    st.markdown("### 📧 Send Minutes by Email")
+
+    email_list = st.text_input(
+        "Recipient Email(s) — separate multiple emails with commas",
+        placeholder="abc@gmail.com, xyz@gmail.com"
+    )
+
+    email_subject = st.text_input(
+        "Email Subject",
+        value=f"Meeting Minutes - {data.get('metadata', {}).get('date', '')}"
+    )
+
+    email_body = st.text_area(
+        "Email Message",
+        value="Dear Team,\n\nPlease find the attached meeting minutes.\n\nRegards,\n",
+        height=150
+    )
+
+    if st.button("📧 Send Email with Attachments", use_container_width=True):
+        try:
+            if not st.session_state.pdf_buffer and not st.session_state.docx_buffer:
+                st.warning("⚠ Generate PDF or DOCX before sending email.")
+            else:
+                from email_utils import send_summary_email
+                recipients = [e.strip() for e in email_list.split(",") if e.strip()]
+                send_summary_email(
+                    subject=email_subject,
+                    body=email_body,
+                    recipients=recipients,
+                    pdf_buffer=st.session_state.pdf_buffer,
+                    docx_buffer=st.session_state.docx_buffer
+                )
+                st.success("📨 Email sent successfully!")
+        except Exception as e:
+            st.error(f"❌ Email sending failed: {e}")
+           
 
 if __name__ == "__main__":
     main()
