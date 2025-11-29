@@ -110,8 +110,10 @@ Voice-controlled meeting recorder
 
 Analytics dashboard for meeting insights
 
-👩‍💻 Developed By
-| Name	Role
-| Sakshi Gowda	Development & UI
-| Nayana	Transcript Testing & Dataset
-| Nikitha & Prathiksha	Documentation & Validation
+## 👩‍💻 Developed By
+
+| Name | Role |
+|------|------|
+| **Sakshi Gowda** | Development & UI |
+| **Nayana** | Transcript Testing & Dataset |
+| **Nikitha & Prathiksha** | Documentation & Validation |
