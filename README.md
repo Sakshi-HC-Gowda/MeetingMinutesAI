@@ -2,65 +2,60 @@
 
 Automated Minutes of Meeting Generator using AI
 
-AIMS is an AI-powered system designed to automatically generate Minutes of Meeting (MoM) from transcripts, PDFs, or audio recordings. It detects meeting details, summarizes discussions, identifies action items, and exports results in the official Minutes of Meeting format used in our college.
+AIMS is an AI-powered system designed to automatically generate Minutes of Meeting (MoM) from transcripts, PDFs, or audio recordings.
+It detects meeting details, summarizes discussions, identifies action items, and exports results in the official Minutes of Meeting format used in our college.
 
 🚀 Features
 Feature	Description
 📤 Multiple upload options	Paste transcript, upload text/PDF, or upload audio
 🎤 Audio transcription	Automatic transcription using Whisper + optional speaker diarization
-🧠 AI summarization	Uses BART model to extract agenda, decisions, summary, and action items
-✏️ Editable UI	Users can review and modify auto-generated details
-📄 Export	Export Minutes of Meeting as PDF and DOCX
-📧 Email	Send MoM directly to attendees (text email or attachment mode)
-🏫 College format	Uses our college-standard MoM structure & layout
+🧠 AI summarization	Uses BART (facebook/bart-large-cnn) to extract summary, agenda, decisions & action items
+✏️ Editable UI	Users can review and modify all auto-generated information
+📄 Export	Generate PDF & DOCX Minutes of Meeting
+📧 Email	Send MoM to attendees — as text email or as PDF/DOCX attachments
+🏫 College format	Layout strictly follows our institution’s MoM standard
+
 🏗️ Tech Stack
 Component	Technology
 Frontend	Streamlit
-AI Summarization	BART (facebook/bart-large-cnn)
+AI Summarization	BART – facebook/bart-large-cnn (Hugging Face Transformers)
 Audio Transcription	Whisper
-Speaker Identification	Diarization module
+Speaker Identification	Diarization Module
 Export	python-docx & ReportLab
-Email	SMTP with Streamlit Secrets
+Email	SMTP + Streamlit Secrets
 📂 Project Workflow
-
-1️⃣ Upload Transcript / Audio
-2️⃣ AI Processing
-
-Chunking long transcripts
-
-BART summarization
-
-Agenda & action item extraction
-3️⃣ Summary Page
-
-Review and edit attendees, agenda, decisions, summary, next meeting
-4️⃣ Export
-
-Download PDF / DOCX
-
-Send via email
+1️⃣ Upload Transcript / PDF / Audio  
+2️⃣ AI Processing  
+   • Chunking long transcripts  
+   • BART summarization  
+   • Agenda / decisions / action item extraction  
+3️⃣ Summary Page  
+   • Review & edit extracted content  
+4️⃣ Export  
+   • Download PDF / DOCX  
+   • Send to emails
 
 📌 Folder Structure
 MeetingMinutesAI/
- ├─ app.py
- ├─ export_utils.py
- ├─ email_utils.py
- ├─ summarizer/
- │   ├─ bart_summarizer.py
- │   ├─ summarize.py
- │   ├─ structure_formatter.py
- ├─ audio_processing/
- │   ├─ transcribe.py
- │   ├─ diarize.py
- │   ├─ transcript_parser.py
- ├─ .streamlit/
- │   ├─ secrets.toml   ← For SMTP email config
- ├─ college_header.jpg
- ├─ requirements.txt
+├─ app.py
+├─ export_utils.py
+├─ email_utils.py
+├─ summarizer/
+│   ├─ bart_summarizer.py
+│   ├─ summarize.py
+│   ├─ structure_formatter.py
+├─ audio_processing/
+│   ├─ transcribe.py
+│   ├─ diarize.py
+│   ├─ transcript_parser.py
+├─ .streamlit/
+│   ├─ secrets.toml    ← For SMTP email configuration
+├─ college_header.jpg
+├─ requirements.txt
 
-💌 Email Configuration (SMTP)
+💌 SMTP Email Configuration
 
-In .streamlit/secrets.toml:
+Create .streamlit/secrets.toml:
 
 smtp_host = "smtp.gmail.com"
 smtp_port = "587"
@@ -75,28 +70,28 @@ streamlit run app.py
 
 📑 Output Format (PDF & DOCX)
 
-The exported minutes include:
+The generated Minutes of Meeting include:
 
 ✔ Title
 ✔ Date, Time, Venue, Organizer, Recorder
 ✔ Attendees
 ✔ Agenda
 ✔ Discussion Summary
-✔ Decisions (if added)
-✔ Action Items (if added)
+✔ Decisions (optional)
+✔ Action Items (optional)
 ✔ Next Meeting
-✔ Closing note
+✔ Closing Note
 
-Fully matches our college Minutes of Meeting format.
+💯 Output layout fully matches our college MoM format.
 
 🎯 Future Enhancements
 
 🔹 Multi-language summarization
-🔹 Department-wise automatic storage
+🔹 Department-wise storage of MoMs
 🔹 Voice-controlled meeting recorder
 🔹 Analytics dashboard for meeting insights
 
-👩‍💻 Developed by
+👩‍💻 Developed By
 Name	Role
 Sakshi Gowda	Development & UI
 Nayana	Transcript Testing & Dataset
