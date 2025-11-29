@@ -24,7 +24,7 @@ It detects meeting details, summarizes discussions, identifies action items, and
 
 | Component | Technology |
 |----------|------------|
-| Frontend | Streamlit |
+| Frontend | Python+Streamlit |
 | AI Summarization | **BART – facebook/bart-large-cnn (Hugging Face Transformers)** |
 | Audio Transcription | **Whisper** |
 | Speaker Identification | Diarization Module |
@@ -73,7 +73,6 @@ MeetingMinutesAI/
 
 Create `.streamlit/secrets.toml`:
 
-```toml
 smtp_host = "smtp.gmail.com"
 smtp_port = "587"
 email = "your_email@gmail.com"
